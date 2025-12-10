@@ -1,0 +1,39 @@
+# Build directories
+build/
+cmake-build-*/
+
+# Compiled binaries
+*.elf
+*.bin
+*.hex
+*.uf2
+*.map
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Editor backups
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Python (for potential host-side tools)
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Debug files
+*.log
+*.out
+
+.claude/

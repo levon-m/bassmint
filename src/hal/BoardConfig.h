@@ -21,7 +21,7 @@ namespace BoardConfig {
     // =========================================================================
     // Bridge-mounted piezo pickup for pitch detection
     // Connect to analog input with appropriate biasing circuit
-    static constexpr uint8_t PiezoPin = 14;  // A0
+    static constexpr uint8_t PiezoPin = 18;  // A4
 
     // =========================================================================
     // OPT101 SENSORS (String Activity Detection)
@@ -29,13 +29,12 @@ namespace BoardConfig {
     // One OPT101 photodiode per string, analog outputs
     // String order: E(0), A(1), D(2), G(3)
     static constexpr uint8_t Opt101Pins[NumStrings] = {
-        15,  // A1 - String 0 (E)
-        16,  // A2 - String 1 (A)
-        17,  // A3 - String 2 (D)
-        18   // A4 - String 3 (G)
+        22,  // A8 - String 0 (E)
+        21,  // A7 - String 1 (A)
+        20,  // A6 - String 2 (D)
+        19   // A5 - String 3 (G)
     };
 
-<<<<<<< HEAD
     // =========================================================================
     // IR LED CONTROL (Paired with OPT101 sensors)
     // =========================================================================
@@ -47,25 +46,17 @@ namespace BoardConfig {
         4,   // String 2 (D) IR LED
         5    // String 3 (G) IR LED
     };
-=======
-// === IR LED control pins (PWM capable) ===
-constexpr uint8_t LED_PIN_STRING_E = 6;   // D4
-constexpr uint8_t LED_PIN_STRING_A = 7;   // D5
-constexpr uint8_t LED_PIN_STRING_D = 4;   // D9
-constexpr uint8_t LED_PIN_STRING_G = 2;   // D8
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 
     // IR LED active state (HIGH = on, LOW = on for active-low drivers)
     static constexpr uint8_t IrLedActiveState = HIGH;
 
     // =========================================================================
-    // MIDI OUTPUT
+    // MIDI OUTPUT (via Adafruit MIDI FeatherWing)
     // =========================================================================
-    // USB MIDI uses the built-in USB port (no pin assignment needed)
-    //
-    // For hardware MIDI via Serial (optional), configure these:
-    static constexpr uint8_t MidiTxPin = 1;   // Serial1 TX (if using hardware MIDI)
-    static constexpr uint8_t MidiRxPin = 0;   // Serial1 RX (if using hardware MIDI)
+    // Hardware MIDI DIN output via Serial2
+    static constexpr uint8_t MidiTxPin = 8;   // Serial2 TX (TX2)
+    static constexpr uint8_t MidiRxPin = 7;   // Serial2 RX (RX2)
+    static constexpr uint32_t MidiBaudRate = 31250;     // Standard MIDI baud rate
 
     // =========================================================================
     // STATUS LED (Optional)

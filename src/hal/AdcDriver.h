@@ -3,11 +3,6 @@
 #include "BoardConfig.h"
 #include <cstddef>
 #include <cstdint>
-<<<<<<< HEAD
-=======
-#include <functional>
-#include "pico/time.h"
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 
 namespace bassmint {
 

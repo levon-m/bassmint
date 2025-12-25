@@ -22,9 +22,11 @@ namespace MidiState {
 }
 
 /**
- * Hardware abstraction for MIDI 1.0 output via USB
+ * Hardware abstraction for MIDI 1.0 DIN output
  *
- * Uses Teensy 4.0's built-in USB MIDI support.
+ * Outputs MIDI via Serial2 (pins 7/8) to Adafruit MIDI FeatherWing.
+ * Pin configuration is in BoardConfig.h.
+ *
  * Channel-per-string encoding:
  * - Channel 1: String 0 (E)
  * - Channel 2: String 1 (A)
@@ -70,7 +72,7 @@ public:
     void sendPitchBend(uint8_t channel, uint16_t value);
 
     /**
-     * Flush any pending MIDI messages
+     * Flush any pending MIDI messages (no-op for hardware MIDI)
      */
     void flush();
 

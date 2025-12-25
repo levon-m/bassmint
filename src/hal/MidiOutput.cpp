@@ -1,15 +1,12 @@
 #include "MidiOutput.h"
+#include "BoardConfig.h"
 #include <Arduino.h>
-
-// Teensy USB MIDI object (defined in Teensy cores when USB_MIDI is enabled)
-#if defined(USB_MIDI) || defined(USB_MIDI_SERIAL)
-#include <usb_midi.h>
-#endif
 
 namespace bassmint {
 
 void MidiOutput::init() {
-    // USB MIDI is initialized by Teensy startup code when USB_MIDI is defined
+    // Initialize hardware MIDI on Serial2
+    Serial2.begin(BoardConfig::MidiBaudRate);
 }
 
 void MidiOutput::sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
@@ -17,7 +14,10 @@ void MidiOutput::sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
     note = clampMidi(note);
     velocity = clampMidi(velocity);
 
-    usbMIDI.sendNoteOn(note, velocity, channel);
+    uint8_t status = 0x90 | ((channel - 1) & 0x0F);  // Note On + channel
+    Serial2.write(status);
+    Serial2.write(note);
+    Serial2.write(velocity);
 }
 
 void MidiOutput::sendNoteOff(uint8_t channel, uint8_t note, uint8_t velocity) {
@@ -25,7 +25,10 @@ void MidiOutput::sendNoteOff(uint8_t channel, uint8_t note, uint8_t velocity) {
     note = clampMidi(note);
     velocity = clampMidi(velocity);
 
-    usbMIDI.sendNoteOff(note, velocity, channel);
+    uint8_t status = 0x80 | ((channel - 1) & 0x0F);  // Note Off + channel
+    Serial2.write(status);
+    Serial2.write(note);
+    Serial2.write(velocity);
 }
 
 void MidiOutput::sendControlChange(uint8_t channel, uint8_t cc, uint8_t value) {
@@ -33,20 +36,26 @@ void MidiOutput::sendControlChange(uint8_t channel, uint8_t cc, uint8_t value) {
     cc = clampMidi(cc);
     value = clampMidi(value);
 
-    usbMIDI.sendControlChange(cc, value, channel);
+    uint8_t status = 0xB0 | ((channel - 1) & 0x0F);  // Control Change + channel
+    Serial2.write(status);
+    Serial2.write(cc);
+    Serial2.write(value);
 }
 
 void MidiOutput::sendPitchBend(uint8_t channel, uint16_t value) {
     if (channel < 1 || channel > 16) return;
     if (value > 16383) value = 16383;
 
-    // Teensy expects -8192 to 8191, convert from 0-16383
-    int bend = static_cast<int>(value) - 8192;
-    usbMIDI.sendPitchBend(bend, channel);
+    uint8_t status = 0xE0 | ((channel - 1) & 0x0F);  // Pitch Bend + channel
+    uint8_t lsb = value & 0x7F;         // Lower 7 bits
+    uint8_t msb = (value >> 7) & 0x7F;  // Upper 7 bits
+    Serial2.write(status);
+    Serial2.write(lsb);
+    Serial2.write(msb);
 }
 
 void MidiOutput::flush() {
-    usbMIDI.send_now();
+    // Hardware MIDI sends immediately, no flush needed
 }
 
 void MidiOutput::sendStringNoteOn(uint8_t stringIndex, uint8_t note, uint8_t velocity) {

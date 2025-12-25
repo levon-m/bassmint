@@ -83,17 +83,10 @@ private:
     StringActivity stringActivity_;
     StringFretResolver resolver_;
 
-<<<<<<< HEAD
     // State management (default-initialized here, no need for init list)
     NoteState noteState_ = {};
     std::array<float, NumStrings> lastEnvelopes_ = {};
     std::array<bool, NumStrings> lastStates_ = {};
-=======
-    // Statistics / monitoring
-    uint32_t loopCounter_;
-    uint32_t lastStatsTime_;
-    uint32_t lastTeleplotTime_;
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 
     // Debug state (Teleplot output)
     uint32_t debugSampleCounter_ = 0;
@@ -102,7 +95,6 @@ private:
     int lastActiveString_ = -1;
     int lastFret_ = -1;
 
-<<<<<<< HEAD
     // Internal stages
     void updateStringActivity();
     void updatePitchDetection();
@@ -114,18 +106,6 @@ private:
 
     // Debug output (Teleplot)
     void sendDebugOutput();
-=======
-    /**
-     * @brief Print debug statistics (if USB serial enabled)
-     */
-    void printStats();
-
-    /**
-     * @brief Output Teleplot-compatible telemetry for real-time visualization
-     * Format: >varName:value\n (parsed by Teleplot VSCode extension)
-     */
-    void printTeleplot();
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 };
 
 } // namespace bassmint

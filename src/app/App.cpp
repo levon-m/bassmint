@@ -52,6 +52,13 @@ void App::update() {
         if (strIdx != lastActiveString_) {
             // String changed - notify estimator
             fretEstimator_.onStringActive(strIdx);
+
+            // Print active string change (only in text mode, not Teleplot)
+            if constexpr (BoardConfig::DebugEnabled && !BoardConfig::TeleplotMode) {
+                static const char* stringNames[] = {"E", "A", "D", "G"};
+                Serial.print("active string: ");
+                Serial.println(stringNames[strIdx]);
+            }
         }
         lastActiveString_ = strIdx;
     } else {
@@ -256,11 +263,12 @@ uint8_t App::envelopeToVelocity(float envelope) const {
 }
 
 void App::sendDebugOutput() {
-    if constexpr (!BoardConfig::DebugEnabled) {
+    // Only used for Teleplot mode
+    if constexpr (!BoardConfig::DebugEnabled || !BoardConfig::TeleplotMode) {
         return;
     }
 
-    // Rate limit debug output to DebugOutputHz
+    // Rate limit debug output
     static constexpr uint32_t samplesPerDebug =
         static_cast<uint32_t>(BoardConfig::SampleRate / BoardConfig::DebugOutputHz);
 
@@ -270,65 +278,15 @@ void App::sendDebugOutput() {
     }
     debugSampleCounter_ = 0;
 
-    // Raw ADC values (0-1 normalized) - E and D strings only
+    // Raw ADC values (0-1 normalized) - Teleplot format
     Serial.print(">adc_E:");
     Serial.println(adc_.readStringSample(0), 4);
+    Serial.print(">adc_A:");
+    Serial.println(adc_.readStringSample(1), 4);
     Serial.print(">adc_D:");
     Serial.println(adc_.readStringSample(2), 4);
-
-    // AC values after DC blocking - E and D strings only
-    Serial.print(">ac_E:");
-    Serial.println(stringActivity_.getString(0).acValue, 4);
-    Serial.print(">ac_D:");
-    Serial.println(stringActivity_.getString(2).acValue, 4);
-
-    // String envelopes - E and D strings only
-    Serial.print(">env_E:");
-    Serial.println(stringActivity_.getString(0).envelope, 4);
-    Serial.print(">env_D:");
-    Serial.println(stringActivity_.getString(2).envelope, 4);
-
-    // Per-string attack thresholds (envelope must exceed this to become active)
-    Serial.print(">thresh_E:");
-    Serial.println(stringActivity_.getAttackThreshold(0), 4);
-    Serial.print(">thresh_D:");
-    Serial.println(stringActivity_.getAttackThreshold(2), 4);
-
-    // String active states (0=idle, 1=active) - E and D only
-    Serial.print(">active_E:");
-    Serial.println(stringActivity_.getString(0).isActive() ? 1 : 0);
-    Serial.print(">active_D:");
-    Serial.println(stringActivity_.getString(2).isActive() ? 1 : 0);
-
-    // Pitch detection results
-    Serial.print(">pitch_hz:");
-    Serial.println(lastPitchHz_);
-    Serial.print(">confidence:");
-    Serial.println(lastConfidence_);
-
-    // Active string (-1 if none, 0-3 for E/A/D/G)
-    Serial.print(">string:");
-    Serial.println(lastActiveString_);
-
-    // Detected fret (-1 if none, 0-24 for fret number)
-    Serial.print(">fret:");
-    Serial.println(lastFret_);
-
-    // Octave disambiguation debug info
-    Serial.print(">octave_state:");
-    Serial.println(lastOctaveState_);  // 0=LOW, 1=HIGH
-    Serial.print(">peak_low:");
-    Serial.println(lastPeakLow_);
-    Serial.print(">peak_high:");
-    Serial.println(lastPeakHigh_);
-    Serial.print(">belief_low:");
-    Serial.println(lastBeliefLow_);
-    Serial.print(">belief_high:");
-    Serial.println(lastBeliefHigh_);
-
-    // Current MIDI note being played (0 if none)
-    Serial.print(">midi_note:");
-    Serial.println(noteState_.isPlaying ? noteState_.currentNote : 0);
+    Serial.print(">adc_G:");
+    Serial.println(adc_.readStringSample(3), 4);
 }
 
 } // namespace bassmint

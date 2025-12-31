@@ -73,13 +73,14 @@ namespace BoardConfig {
     static constexpr size_t PitchFrameSize = 2048;        // Pitch detection frame size
 
     // =========================================================================
-    // DEBUG CONFIGURATION (Teleplot)
+    // DEBUG CONFIGURATION
     // =========================================================================
-    // Set to true to enable Serial debug output for Teleplot visualization
-    // Plots: envelope per string, pitch, confidence, string/fret output
     static constexpr bool DebugEnabled = true;
     static constexpr uint32_t DebugBaudRate = 115200;
-    static constexpr uint32_t DebugOutputHz = 60;         // How often to send debug data
+    static constexpr uint32_t DebugOutputHz = 60;         // How often to send Teleplot data
+
+    // Debug mode: true = Teleplot graphs, false = text messages (active string changes)
+    static constexpr bool TeleplotMode = false;
 
 } // namespace BoardConfig
 } // namespace bassmint

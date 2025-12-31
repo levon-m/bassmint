@@ -17,16 +17,10 @@ namespace BoardConfig {
     static constexpr size_t NumStrings = 4;
 
     // =========================================================================
-    // PIEZO SENSOR (Pitch Detection)
-    // =========================================================================
-    // Bridge-mounted piezo pickup for pitch detection
-    // Connect to analog input with appropriate biasing circuit
-    static constexpr uint8_t PiezoPin = 18;  // A4
-
-    // =========================================================================
-    // OPT101 SENSORS (String Activity Detection)
+    // OPT101 SENSORS (String Detection + Pitch Detection)
     // =========================================================================
     // One OPT101 photodiode per string, analog outputs
+    // Used for both string activity detection and pitch detection
     // String order: E(0), A(1), D(2), G(3)
     static constexpr uint8_t Opt101Pins[NumStrings] = {
         22,  // A8 - String 0 (E)
@@ -47,8 +41,8 @@ namespace BoardConfig {
         5    // String 3 (G) IR LED
     };
 
-    // IR LED active state (HIGH = on, LOW = on for active-low drivers)
-    static constexpr uint8_t IrLedActiveState = HIGH;
+    // IR LED active state (1 = on, 0 = on for active-low drivers)
+    static constexpr uint8_t IrLedActiveState = 1;
 
     // =========================================================================
     // MIDI OUTPUT (via Adafruit MIDI FeatherWing)

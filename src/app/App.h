@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../dsp/PitchDetector.h"
+#include "../dsp/OctaveFretEstimator.h"
 #include "../dsp/StringActivity.h"
 #include "StringFretResolver.h"
 #include "../core/NoteTables.h"
@@ -37,7 +37,7 @@ struct NoteState {
  *
  * Flow:
  * 1. Read OPT101 sensors -> String Activity (which string is playing?)
- * 2. Read Piezo sensor -> Pitch Detection (what note?)
+ * 2. Read active string's OPT101 signal -> Pitch Detection (what note?)
  * 3. Resolve string + pitch -> fret decision
  * 4. Output MIDI messages
  */
@@ -79,7 +79,7 @@ private:
     MidiOutput midi_;
 
     // DSP components (constructed with sample rate in constructor)
-    PitchDetector pitchDetector_;
+    OctaveFretEstimator fretEstimator_;
     StringActivity stringActivity_;
     StringFretResolver resolver_;
 
@@ -94,6 +94,11 @@ private:
     float lastConfidence_ = 0.0f;
     int lastActiveString_ = -1;
     int lastFret_ = -1;
+    int lastOctaveState_ = -1;
+    float lastPeakLow_ = 0.0f;
+    float lastPeakHigh_ = 0.0f;
+    float lastBeliefLow_ = 0.5f;
+    float lastBeliefHigh_ = 0.5f;
 
     // Internal stages
     void updateStringActivity();

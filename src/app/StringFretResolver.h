@@ -2,12 +2,24 @@
 
 #include "../core/Tuning.h"
 #include "../core/NoteMapping.h"
-#include "../dsp/PitchDetector.h"
 #include "../dsp/StringActivity.h"
 #include <array>
 #include <optional>
 
 namespace bassmint {
+
+/**
+ * Result of pitch detection
+ * Used to pass pitch estimates from OctaveFretEstimator to StringFretResolver
+ */
+struct PitchResult {
+    float frequencyHz = 0.0f;
+    float confidence  = 0.0f;
+
+    bool isValid() const {
+        return confidence > 0.0f && frequencyHz > 0.0f;
+    }
+};
 
 /**
  * Final decision output combining string and fret information

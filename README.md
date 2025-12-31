@@ -2,7 +2,7 @@
 
 **Bass Guitar MIDI Interface using Teensy 4.0**
 
-BassMINT is a real-time pitch-to-MIDI system optimized for bass guitar. It uses a combination of optical string sensors and a piezo pickup to accurately detect which string is being played and what note is being fretted.
+BassMINT is a real-time pitch-to-MIDI system optimized for bass guitar. It uses optical string sensors to accurately detect which string is being played and what note is being fretted.
 
 ## Why BassMINT?
 
@@ -11,16 +11,16 @@ Traditional pitch-to-MIDI systems struggle with bass guitar due to:
 - Sympathetic string vibration causing false triggers
 - Difficulty distinguishing which string produced a note (same pitch can exist on multiple strings)
 
-BassMINT solves these problems with a **two-stage detection system**:
-1. **Optical string detection** - Per-string OPT101 break-beam sensors determine which string is active
-2. **Optimized pitch detection** - YIN algorithm tuned for bass frequencies, constrained to the active string's range
+BassMINT solves these problems with **OPT101 optical sensors** that serve dual purposes:
+1. **String detection** - Per-string envelope tracking determines which string is active
+2. **Pitch detection** - The string vibration modulates the light beam, encoding pitch information in the same signal
 
 ## Hardware Requirements
 
 - **Teensy 4.0** (IMXRT1062 ARM Cortex-M7 @ 600MHz)
-- **Piezo pickup** - Bridge-mounted for pitch detection
-- **4x OPT101 sensors** - One per string for activity detection
+- **4x OPT101 sensors** - One per string for activity and pitch detection
 - **4x IR LEDs** - Paired with OPT101s for break-beam sensing
+- **MIDI FeatherWing** - Hardware MIDI DIN output
 
 ## Architecture Overview
 
@@ -30,7 +30,7 @@ BassMINT solves these problems with a **two-stage detection system**:
 │                   String Activity                            │
 │                                                              │
 │  OPT101 Sensors ──► Envelope Followers ──► Active String    │
-│  (A1-A4)            (per string)            Selection       │
+│  (A5-A8)            (per string)            Selection       │
 │                                                              │
 │  Output: Which string is currently being played              │
 └─────────────────────────────────────────────────────────────┘
@@ -40,8 +40,8 @@ BassMINT solves these problems with a **two-stage detection system**:
 │                        STAGE 2                               │
 │                   Pitch Detection                            │
 │                                                              │
-│  Piezo (A0) ──► High-Pass ──► Hann Window ──► YIN Algorithm │
-│                 Filter                                       │
+│  Active String's ──► DC Removal ──► High-Pass ──► YIN       │
+│  OPT101 Signal                      Filter        Algorithm │
 │                                                              │
 │  Output: Frequency (Hz) + Confidence                         │
 └─────────────────────────────────────────────────────────────┘
@@ -177,6 +177,8 @@ The **active string** is selected as:
 This prevents false triggers from sympathetic vibration.
 
 ### Pitch Detection (YIN Algorithm)
+
+The same OPT101 signal used for string detection also contains the string's vibration waveform. Once the active string is identified, its signal is fed to the YIN pitch detector.
 
 YIN is a time-domain pitch detection algorithm ideal for monophonic signals:
 

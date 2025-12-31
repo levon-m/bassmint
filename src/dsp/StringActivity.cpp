@@ -10,15 +10,26 @@ static constexpr float EnvelopeAttackMs  = 5.0f;
 static constexpr float EnvelopeReleaseMs = 100.0f;
 
 StringActivity::StringActivity(float sampleRate)
-    : followers_{
+    : dcBlockers_{}  // Default-constructed with coeff=0.995
+    , followers_{
         EnvelopeFollower(sampleRate, EnvelopeAttackMs, EnvelopeReleaseMs),
         EnvelopeFollower(sampleRate, EnvelopeAttackMs, EnvelopeReleaseMs),
         EnvelopeFollower(sampleRate, EnvelopeAttackMs, EnvelopeReleaseMs),
         EnvelopeFollower(sampleRate, EnvelopeAttackMs, EnvelopeReleaseMs)
     }
     , states_{}
-    , attackThreshold_(DefaultAttackThreshold)
-    , releaseThreshold_(DefaultReleaseThreshold)
+    , attackThresholds_{
+        DefaultAttackThresholds[0],
+        DefaultAttackThresholds[1],
+        DefaultAttackThresholds[2],
+        DefaultAttackThresholds[3]
+    }
+    , releaseThresholds_{
+        DefaultReleaseThresholds[0],
+        DefaultReleaseThresholds[1],
+        DefaultReleaseThresholds[2],
+        DefaultReleaseThresholds[3]
+    }
     , lastActiveString_(-1)
     , currentTime_(0)
 {
@@ -29,8 +40,14 @@ void StringActivity::processSample(size_t stringIndex, float sample) {
         return;
     }
 
-    // Update envelope
-    float envelope = followers_[stringIndex].processSample(sample);
+    // Remove DC bias to extract AC component (string vibration)
+    float ac = dcBlockers_[stringIndex].process(sample);
+
+    // Update envelope from AC signal
+    float envelope = followers_[stringIndex].processSample(ac);
+
+    // Store AC value for debugging
+    states_[stringIndex].acValue = ac;
 
     // Update string state
     updateStringState(stringIndex, envelope);
@@ -40,18 +57,20 @@ void StringActivity::updateStringState(size_t stringIndex, float envelope) {
     auto& state = states_[stringIndex];
     state.envelope = envelope;
 
-    StringState prevState = state.state;
+    // Use per-string thresholds
+    float attackThresh = attackThresholds_[stringIndex];
+    float releaseThresh = releaseThresholds_[stringIndex];
 
     // Hysteresis: different thresholds for attack and release
     if (state.state == StringState::Idle) {
-        if (envelope > attackThreshold_) {
+        if (envelope > attackThresh) {
             state.state = StringState::Active;
             state.lastActiveTime = currentTime_;
             lastActiveString_ = static_cast<int>(stringIndex);
         }
     } else {
         // Currently Active
-        if (envelope < releaseThreshold_) {
+        if (envelope < releaseThresh) {
             state.state = StringState::Idle;
         }
     }
@@ -118,6 +137,7 @@ std::optional<size_t> StringActivity::getLastPluckedString() const {
 
 void StringActivity::reset() {
     for (size_t i = 0; i < NumStrings; ++i) {
+        dcBlockers_[i].reset();
         followers_[i].reset();
         states_[i] = StringActivityState{};
     }
@@ -125,12 +145,23 @@ void StringActivity::reset() {
     currentTime_ = 0;
 }
 
-void StringActivity::setAttackThreshold(float threshold) {
-    attackThreshold_ = std::max(0.0f, threshold);
+void StringActivity::setAttackThreshold(size_t stringIndex, float threshold) {
+    if (stringIndex < NumStrings) {
+        attackThresholds_[stringIndex] = std::max(0.0f, threshold);
+    }
 }
 
-void StringActivity::setReleaseThreshold(float threshold) {
-    releaseThreshold_ = std::max(0.0f, threshold);
+void StringActivity::setReleaseThreshold(size_t stringIndex, float threshold) {
+    if (stringIndex < NumStrings) {
+        releaseThresholds_[stringIndex] = std::max(0.0f, threshold);
+    }
+}
+
+float StringActivity::getAttackThreshold(size_t stringIndex) const {
+    if (stringIndex < NumStrings) {
+        return attackThresholds_[stringIndex];
+    }
+    return 0.0f;
 }
 
 void StringActivity::tick() {

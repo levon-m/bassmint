@@ -9,20 +9,18 @@ void AdcDriver::init() {
 
     // Set averaging for smoother reads
     analogReadAveraging(averaging_);
+
+    // Disable digital input keeper on all analog pins to prevent loading
+    // high-impedance sources (OPT101 outputs).
+    // The Teensy 4.0 GPIO keeper acts like ~100k pull and creates a resistor
+    // divider that drags the ADC node away from the intended bias voltage.
+    for (size_t i = 0; i < NumStrings; ++i) {
+        pinMode(BoardConfig::Opt101Pins[i], INPUT_DISABLE);
+    }
 }
 
 uint16_t AdcDriver::readAdc(uint8_t pin) {
     return analogRead(pin);
-}
-
-float AdcDriver::readPiezoSample() {
-    uint16_t raw = readPiezoRaw();
-
-    // Convert to -1 to +1 range
-    // Piezo is AC-coupled, so signal oscillates around mid-scale
-    constexpr float midScale = BoardConfig::AdcMaxValue / 2.0f;
-    float normalized = (static_cast<float>(raw) - midScale) / midScale;
-    return normalized;
 }
 
 float AdcDriver::readStringSample(size_t stringIndex) {
@@ -31,10 +29,6 @@ float AdcDriver::readStringSample(size_t stringIndex) {
     // OPT101 output is DC (0 to VRef based on light intensity)
     float normalized = static_cast<float>(raw) / static_cast<float>(BoardConfig::AdcMaxValue);
     return normalized;
-}
-
-uint16_t AdcDriver::readPiezoRaw() {
-    return readAdc(BoardConfig::PiezoPin);
 }
 
 uint16_t AdcDriver::readStringRaw(size_t stringIndex) {

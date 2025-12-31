@@ -1,44 +1,16 @@
-<<<<<<< HEAD
 #include "App.h"
+#include "StringFretResolver.h"  // For PitchResult struct
+#include <Arduino.h>
 #include <cmath>
 #include <algorithm>
-=======
-#include "app/App.h"
-#include "hal/BoardConfig.h"
-#include <cstdio>
-#include "pico/stdlib.h"  // For stdio_flush()
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 
-#if BoardConfig::DebugEnabled
-#include <Arduino.h>
-#endif
-
-<<<<<<< HEAD
 namespace bassmint {
 
 App::App(const AppConfig& config)
     : config_(config)
-    , pitchDetector_(config.sampleRate, config.pitchFrameSize)
+    , fretEstimator_(config.sampleRate)
     , stringActivity_(config.sampleRate)
     , resolver_(config.sampleRate)
-=======
-App::App()
-    : stringProcessors_{
-        StringProcessor(StringId::E),
-        StringProcessor(StringId::A),
-        StringProcessor(StringId::D),
-        StringProcessor(StringId::G)
-    }
-    , stringManagers_{
-        StringManager(StringId::E, midiOut_),
-        StringManager(StringId::A, midiOut_),
-        StringManager(StringId::D, midiOut_),
-        StringManager(StringId::G, midiOut_)
-    }
-    , loopCounter_(0)
-    , lastStatsTime_(0)
-    , lastTeleplotTime_(0)
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 {
     resolver_.setMinConfidence(config.minPitchConfidence);
 }
@@ -60,7 +32,7 @@ void App::init() {
 void App::reset() {
     stringActivity_.reset();
     resolver_.reset();
-    pitchDetector_.reset();
+    fretEstimator_.reset(config_.sampleRate);
 
     noteState_ = NoteState{};
     lastEnvelopes_.fill(0.0f);
@@ -74,12 +46,25 @@ void App::update() {
     // Check if any string is active before doing pitch detection
     auto activeString = stringActivity_.getActiveString();
 
-    // Stage 2: Update pitch detection from piezo (only if string active)
+    // Handle string active/inactive transitions for fret estimator
+    if (activeString.has_value()) {
+        int strIdx = static_cast<int>(activeString.value());
+        if (strIdx != lastActiveString_) {
+            // String changed - notify estimator
+            fretEstimator_.onStringActive(strIdx);
+        }
+        lastActiveString_ = strIdx;
+    } else {
+        if (lastActiveString_ >= 0) {
+            // String went inactive
+            fretEstimator_.onStringInactive();
+        }
+        lastActiveString_ = -1;
+    }
+
+    // Stage 2: Update fret estimation from active string's OPT101 signal
     if (activeString.has_value()) {
         updatePitchDetection();
-        lastActiveString_ = static_cast<int>(activeString.value());
-    } else {
-        lastActiveString_ = -1;
     }
 
     // Update resolver with string activity states
@@ -115,17 +100,43 @@ void App::updateStringActivity() {
 }
 
 void App::updatePitchDetection() {
-    // Read piezo sample
-    float piezoSample = adc_.readPiezoSample();
+    // Get the active string and use its OPT101 signal for fret estimation
+    auto activeString = stringActivity_.getActiveString();
+    if (!activeString.has_value()) {
+        return;
+    }
 
-    // Process through pitch detector
-    auto pitchResult = pitchDetector_.processSample(piezoSample);
+    // Read the active string's OPT101 sample for fret estimation
+    // The OPT101 signal contains the string vibration waveform
+    // The estimator does its own preprocessing (DC removal, filtering, decimation)
+    float stringSample = adc_.readStringSample(activeString.value());
 
-    // If we got a pitch result, update resolver and debug state
-    if (pitchResult.has_value()) {
-        resolver_.updatePitch(*pitchResult);
-        lastPitchHz_ = pitchResult->frequencyHz;
-        lastConfidence_ = pitchResult->confidence;
+    // Process through the octave-aware fret estimator
+    fretEstimator_.processSample(stringSample);
+
+    // If we got a new estimate, update resolver and debug state
+    if (fretEstimator_.hasNewEstimate()) {
+        const auto& estimate = fretEstimator_.getEstimate();
+        const auto& debug = fretEstimator_.getDebugInfo();
+
+        // Update resolver with the fret estimate
+        // Create a PitchResult-compatible structure for the resolver
+        PitchResult pitchResult;
+        pitchResult.frequencyHz = estimate.frequencyHz;
+        pitchResult.confidence = estimate.confidence;
+        resolver_.updatePitch(pitchResult);
+
+        // Update debug state
+        lastPitchHz_ = estimate.frequencyHz;
+        lastConfidence_ = estimate.confidence;
+        lastFret_ = estimate.fret;
+        lastOctaveState_ = estimate.octaveState;
+
+        // Store octave debug info
+        lastPeakLow_ = debug.peakLow;
+        lastPeakHigh_ = debug.peakHigh;
+        lastBeliefLow_ = debug.beliefLow;
+        lastBeliefHigh_ = debug.beliefHigh;
     }
 }
 
@@ -159,7 +170,6 @@ void App::resolveAndOutput() {
         // No valid note
         lastFret_ = -1;
 
-<<<<<<< HEAD
         // Stop any playing note
         if (noteState_.isPlaying) {
             // Check if string is still active (don't immediately stop on brief pitch loss)
@@ -169,25 +179,6 @@ void App::resolveAndOutput() {
                 triggerNoteOff();
             }
         }
-=======
-    // Start ADC sampling
-    adcDriver_.startSampling();
-
-    lastStatsTime_ = Timer::getTimeMillis();
-
-    printf("BassMINT initialized successfully!\n");
-    printf("Sample rate: %lu Hz\n", SAMPLE_RATE_HZ);
-    printf("Frame size: %lu samples\n", PITCH_FRAME_SIZE);
-    printf("Ready to rock.\n");
-
-    return true;
-}
-
-void App::run() {
-    // Main loop - runs forever
-    while (true) {
-        tick();
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
     }
 }
 
@@ -202,7 +193,6 @@ void App::triggerNoteOn(const StringFretDecision& decision) {
     // Ensure minimum velocity
     if (velocity < 1) velocity = 1;
 
-<<<<<<< HEAD
     // Send note on
     midi_.sendNoteOn(channel, note, velocity);
 
@@ -210,24 +200,6 @@ void App::triggerNoteOn(const StringFretDecision& decision) {
     noteState_.isPlaying = true;
     noteState_.currentNote = note;
     noteState_.currentChannel = channel;
-=======
-    uint32_t now = Timer::getTimeMillis();
-
-    #ifdef BASSMINT_DEBUG_STATS
-    // Teleplot output at ~100Hz for real-time visualization
-    if (now - lastTeleplotTime_ >= 10) {
-        printTeleplot();
-        lastTeleplotTime_ = now;
-    }
-    #endif
-
-    // Print text stats every 5 seconds (goes to Teleplot console)
-    if (now - lastStatsTime_ >= 5000) {
-        printStats();
-        lastStatsTime_ = now;
-        loopCounter_ = 0;
-    }
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 }
 
 void App::triggerNoteOff() {
@@ -270,7 +242,6 @@ void App::sendControlChanges() {
     }
 }
 
-<<<<<<< HEAD
 uint8_t App::envelopeToVelocity(float envelope) const {
     // Non-linear mapping for more natural velocity response
     // envelope 0.0-1.0 -> velocity 1-127
@@ -285,7 +256,10 @@ uint8_t App::envelopeToVelocity(float envelope) const {
 }
 
 void App::sendDebugOutput() {
-#if BoardConfig::DebugEnabled
+    if constexpr (!BoardConfig::DebugEnabled) {
+        return;
+    }
+
     // Rate limit debug output to DebugOutputHz
     static constexpr uint32_t samplesPerDebug =
         static_cast<uint32_t>(BoardConfig::SampleRate / BoardConfig::DebugOutputHz);
@@ -296,15 +270,35 @@ void App::sendDebugOutput() {
     }
     debugSampleCounter_ = 0;
 
-    // String envelopes (one plot per string)
+    // Raw ADC values (0-1 normalized) - E and D strings only
+    Serial.print(">adc_E:");
+    Serial.println(adc_.readStringSample(0), 4);
+    Serial.print(">adc_D:");
+    Serial.println(adc_.readStringSample(2), 4);
+
+    // AC values after DC blocking - E and D strings only
+    Serial.print(">ac_E:");
+    Serial.println(stringActivity_.getString(0).acValue, 4);
+    Serial.print(">ac_D:");
+    Serial.println(stringActivity_.getString(2).acValue, 4);
+
+    // String envelopes - E and D strings only
     Serial.print(">env_E:");
-    Serial.println(stringActivity_.getString(0).envelope);
-    Serial.print(">env_A:");
-    Serial.println(stringActivity_.getString(1).envelope);
+    Serial.println(stringActivity_.getString(0).envelope, 4);
     Serial.print(">env_D:");
-    Serial.println(stringActivity_.getString(2).envelope);
-    Serial.print(">env_G:");
-    Serial.println(stringActivity_.getString(3).envelope);
+    Serial.println(stringActivity_.getString(2).envelope, 4);
+
+    // Per-string attack thresholds (envelope must exceed this to become active)
+    Serial.print(">thresh_E:");
+    Serial.println(stringActivity_.getAttackThreshold(0), 4);
+    Serial.print(">thresh_D:");
+    Serial.println(stringActivity_.getAttackThreshold(2), 4);
+
+    // String active states (0=idle, 1=active) - E and D only
+    Serial.print(">active_E:");
+    Serial.println(stringActivity_.getString(0).isActive() ? 1 : 0);
+    Serial.print(">active_D:");
+    Serial.println(stringActivity_.getString(2).isActive() ? 1 : 0);
 
     // Pitch detection results
     Serial.print(">pitch_hz:");
@@ -320,59 +314,21 @@ void App::sendDebugOutput() {
     Serial.print(">fret:");
     Serial.println(lastFret_);
 
+    // Octave disambiguation debug info
+    Serial.print(">octave_state:");
+    Serial.println(lastOctaveState_);  // 0=LOW, 1=HIGH
+    Serial.print(">peak_low:");
+    Serial.println(lastPeakLow_);
+    Serial.print(">peak_high:");
+    Serial.println(lastPeakHigh_);
+    Serial.print(">belief_low:");
+    Serial.println(lastBeliefLow_);
+    Serial.print(">belief_high:");
+    Serial.println(lastBeliefHigh_);
+
     // Current MIDI note being played (0 if none)
     Serial.print(">midi_note:");
     Serial.println(noteState_.isPlaying ? noteState_.currentNote : 0);
-#endif
 }
 
 } // namespace bassmint
-=======
-void App::printStats() {
-    // Print text stats to Teleplot console (non-plot messages)
-    #ifdef BASSMINT_DEBUG_STATS
-    const auto& proc = stringProcessors_[static_cast<uint8_t>(StringId::A)];
-    const auto& mgr = stringManagers_[static_cast<uint8_t>(StringId::A)];
-
-    printf("[A] loops/sec:%lu acc:%zu pitch:%.1fHz conf:%.2f midi:%u fret:%d %s\n",
-           loopCounter_ / 5,  // Average over 5 seconds
-           proc.getAccumulatedSamples(),
-           proc.getLatestPitch().frequencyHz,
-           proc.getLatestPitch().confidence,
-           mgr.getCurrentMidiNote(),
-           mgr.getCurrentFret(),
-           mgr.isNoteOn() ? "[ON]" : "");
-    #else
-    (void)loopCounter_;
-    #endif
-}
-
-void App::printTeleplot() {
-    // Output Teleplot-compatible telemetry for string A only
-    // Format: >varName:value\n
-    const auto& proc = stringProcessors_[static_cast<uint8_t>(StringId::A)];
-
-    // Current raw ADC value
-    printf(">adc:%u\n", proc.getLatestRawAdc());
-
-    // Adaptive DC baseline (should track the ADC center automatically)
-    printf(">dc:%.0f\n", proc.getDcEstimate());
-
-    // ADC signal swing (max - min)
-    uint16_t adcMin = proc.getAdcMin();
-    uint16_t adcMax = proc.getAdcMax();
-    int16_t swing = (adcMax > adcMin) ? (adcMax - adcMin) : 0;
-    printf(">swing:%d\n", swing);
-
-    // Envelope value (should now be ~0 at rest, spike on pluck)
-    printf(">env:%.3f\n", proc.getEnvelope());
-
-    // Detected pitch in Hz (0 when not detected)
-    printf(">pitch:%.1f\n", proc.getLatestPitch().frequencyHz);
-
-    // Flush USB buffer immediately for real-time response
-    stdio_flush();
-}
-
-} // namespace BassMINT
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06

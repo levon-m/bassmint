@@ -10,8 +10,7 @@ namespace bassmint {
  * Hardware abstraction for ADC reading on Teensy 4.0
  *
  * Reads from:
- * - Bridge piezo (primary pitch sensor)
- * - 4x OPT101 sensors (string activity detection)
+ * - 4x OPT101 sensors (string activity and pitch detection)
  *
  * Pin assignments are configured in BoardConfig.h
  */
@@ -25,21 +24,10 @@ public:
     void init();
 
     /**
-     * Read sample from piezo sensor (normalized -1 to +1)
-     * The piezo signal is AC-coupled, centered around 0
-     */
-    float readPiezoSample();
-
-    /**
      * Read sample from a string's OPT101 sensor (normalized 0 to 1)
      * @param stringIndex String index (0-3: E, A, D, G)
      */
     float readStringSample(size_t stringIndex);
-
-    /**
-     * Read raw ADC value from piezo (0 to 4095)
-     */
-    uint16_t readPiezoRaw();
 
     /**
      * Read raw ADC value from string sensor (0 to 4095)

@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.19)
 
 set(TEENSY_VERSION "40" CACHE STRING "Teensy version")
 set(CPU_SPEED "600000000" CACHE STRING "CPU speed in Hz")
-set(USB_MODE "MIDI" CACHE STRING "USB mode")
+set(USB_MODE "MIDI_SERIAL" CACHE STRING "USB mode")
 
 # Toolchain setup (if not using external toolchain file)
 if(NOT CMAKE_TOOLCHAIN_FILE)
@@ -30,12 +30,18 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 endif()
 
-# Path to Teensy cores - set via -DTEENSY_PATH=... or auto-detect
-# Common locations:
-#   Windows: C:/Program Files (x86)/Arduino/hardware/teensy/avr
-#   macOS: /Applications/Arduino.app/Contents/Java/hardware/teensy/avr
-#   Linux: ~/.arduino15/packages/teensy/hardware/avr/*
-if(NOT DEFINED TEENSY_PATH)
+# Path to Teensy cores - prefer local libs/ folder, fallback to system install
+set(LOCAL_TEENSY_CORES "${CMAKE_CURRENT_SOURCE_DIR}/libs/TeensyCores")
+
+if(EXISTS "${LOCAL_TEENSY_CORES}/teensy4")
+    set(TEENSY_PATH "${LOCAL_TEENSY_CORES}")
+    set(CORES_SUBDIR "teensy4")
+    message(STATUS "Using local Teensy cores: ${TEENSY_PATH}")
+elseif(DEFINED TEENSY_PATH AND EXISTS "${TEENSY_PATH}/cores/teensy4")
+    set(CORES_SUBDIR "cores/teensy4")
+    message(STATUS "Using system Teensy cores: ${TEENSY_PATH}")
+else()
+    # Auto-detect system installation
     if(WIN32)
         set(_SEARCH_PATHS
             "C:/Program Files (x86)/Arduino/hardware/teensy/avr"
@@ -55,20 +61,21 @@ if(NOT DEFINED TEENSY_PATH)
     foreach(_PATH ${_SEARCH_PATHS})
         if(EXISTS "${_PATH}/cores/teensy4")
             set(TEENSY_PATH "${_PATH}")
+            set(CORES_SUBDIR "cores/teensy4")
             break()
         endif()
     endforeach()
-endif()
 
-if(NOT TEENSY_PATH OR NOT EXISTS "${TEENSY_PATH}/cores/teensy4")
-    message(FATAL_ERROR
-        "Teensy cores not found!\n"
-        "Install Teensyduino and set TEENSY_PATH:\n"
-        "  cmake -DTEENSY_PATH=\"C:/Program Files (x86)/Arduino/hardware/teensy/avr\" -B build -G Ninja"
-    )
+    if(TEENSY_PATH)
+        message(STATUS "Using system Teensy cores: ${TEENSY_PATH}")
+    else()
+        message(FATAL_ERROR
+            "Teensy cores not found!\n"
+            "Either place TeensyCores in libs/ or set TEENSY_PATH:\n"
+            "  cmake -DTEENSY_PATH=\"C:/Program Files (x86)/Arduino/hardware/teensy/avr\" -B build -G Ninja"
+        )
+    endif()
 endif()
-
-message(STATUS "Teensy cores: ${TEENSY_PATH}")
 
 project(BassMINT VERSION 1.0.0 LANGUAGES C CXX ASM)
 
@@ -77,7 +84,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
 
 # Teensy paths
-set(CORES_PATH "${TEENSY_PATH}/cores/teensy4")
+set(CORES_PATH "${TEENSY_PATH}/${CORES_SUBDIR}")
 
 # Cortex-M7 compiler flags
 set(CPU_FLAGS "-mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-d16 -mthumb")
@@ -91,10 +98,11 @@ set(CMAKE_EXE_LINKER_FLAGS "${CPU_FLAGS} -Wl,--gc-sections,--relax -T${CORES_PAT
 # Teensy 4.0 definitions
 add_compile_definitions(
     __IMXRT1062__
+    ARDUINO_TEENSY40
     TEENSYDUINO=159
     ARDUINO=10819
     F_CPU=${CPU_SPEED}
-    USB_MIDI
+    USB_MIDI_SERIAL
     LAYOUT_US_ENGLISH
 )
 
@@ -110,7 +118,7 @@ set(BASSMINT_SOURCES
     src/app/App.cpp
     src/app/StringFretResolver.cpp
     # DSP
-    src/dsp/PitchDetector.cpp
+    src/dsp/OctaveFretEstimator.cpp
     src/dsp/EnvelopeFollower.cpp
     src/dsp/StringActivity.cpp
     # Core
@@ -136,36 +144,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CORES_PATH}
 )
 
-<<<<<<< HEAD
 # Generate .hex for Teensy Loader
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O ihex -R .eeprom $<TARGET_FILE:${PROJECT_NAME}> ${PROJECT_NAME}.hex
     COMMENT "Generating ${PROJECT_NAME}.hex"
-=======
-# Enable USB output, disable UART output for stdio
-# (we use UART for MIDI, not debug)
-pico_enable_stdio_usb(bassmint 1)
-pico_enable_stdio_uart(bassmint 0)
-
-# Create map/bin/hex/uf2 files
-pico_add_extra_outputs(bassmint)
-
-# Debug output options
-option(BASSMINT_DEBUG_STATS "Enable debug statistics output" OFF)
-
-if(BASSMINT_DEBUG_STATS)
-    target_compile_definitions(bassmint PRIVATE BASSMINT_DEBUG_STATS=1)
-endif()
-
-# Compiler optimizations for embedded
-target_compile_options(bassmint PRIVATE
-    -Wall
-    -Wextra
-    -Werror=return-type
-    -O2
-    -ffunction-sections
-    -fdata-sections
->>>>>>> 491b711ec2cfccc73c60c377d0b2d86c73cefe06
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

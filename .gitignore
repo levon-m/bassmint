@@ -37,3 +37,6 @@ venv/
 *.out
 
 .claude/
+CLAUDE.md
+
+nul

@@ -10,30 +10,26 @@ BassMINT operates as a real-time signal processing pipeline on the Teensy 4.0 mi
 
 ### Sensors
 
-**Piezo Pickup (A0)**
-- Bridge-mounted contact microphone
-- AC-coupled signal centered at VRef/2 (1.65V)
-- Captures string vibration for pitch detection
-- Wide bandwidth captures fundamental and harmonics
+**OPT101 Break-Beam Sensors (A5-A8)**
 
-**OPT101 Break-Beam Sensors (A1-A4)**
 - Integrated photodiode + transimpedance amplifier
 - Paired with IR LEDs for per-string detection
 - DC output varies with string position
 - String vibration creates AC component proportional to activity
+- Same signal used for both string detection (envelope) and pitch detection (waveform)
 
 ### ADC Configuration
 
 - 12-bit resolution (0-4095)
 - Hardware averaging (4 samples) for noise reduction
 - ~100kHz effective sample rate per channel
-- Multiplexed reading: piezo first, then strings in sequence
+- Reading order: strings 0-3 (E, A, D, G) in sequence
 
 ## Software Architecture
 
 ### Module Hierarchy
 
-```
+```text
 main.cpp
     └── App
         ├── AdcDriver (HAL)
@@ -50,7 +46,7 @@ main.cpp
 
 ### Data Flow
 
-```
+```text
 Sample n arrives:
     │
     ├──► OPT101[0..3] ──► EnvelopeFollower ──► StringActivityState
@@ -58,22 +54,22 @@ Sample n arrives:
     │                                              ▼
     │                                        getActiveString()
     │                                              │
-    └──► Piezo ──► HighPass ──► Window ──► YIN ──┤
-                                             │    │
-                                             ▼    ▼
-                                        PitchResult
-                                             │
-                                             ▼
-                               StringFretResolver.resolve()
-                                             │
-                                             ▼
-                                    StringFretDecision
-                                             │
-                               ┌─────────────┴─────────────┐
-                               ▼                           ▼
-                          Note On/Off                 CC Messages
-                          (if changed)            (envelope, state,
-                                                   confidence)
+    └──► Active String's ──► DC Removal ──► HighPass ──► Window ──► YIN ──┤
+         OPT101 Signal                                                     │
+                                                                          ▼
+                                                                     PitchResult
+                                                                          │
+                                                                          ▼
+                                                        StringFretResolver.resolve()
+                                                                          │
+                                                                          ▼
+                                                                 StringFretDecision
+                                                                          │
+                                                        ┌─────────────────┴─────────────┐
+                                                        ▼                               ▼
+                                                   Note On/Off                     CC Messages
+                                                   (if changed)                (envelope, state,
+                                                                                 confidence)
 ```
 
 ## DSP Module Details
@@ -91,6 +87,7 @@ if (|x| > envelope) {
 ```
 
 **Parameters:**
+
 - Attack: 5ms (coefficient ~0.9973 at 44.1kHz)
 - Release: 100ms (coefficient ~0.99977)
 
@@ -99,7 +96,8 @@ if (|x| > envelope) {
 Maintains state for all 4 strings:
 
 **State Machine (per string):**
-```
+
+```text
         ┌──────────────────────────────────────┐
         │                                      │
         ▼                                      │
@@ -112,6 +110,7 @@ Maintains state for all 4 strings:
 ```
 
 **Active String Selection:**
+
 1. Find all strings in ACTIVE state
 2. Select string with highest envelope
 3. Tie-breaker: most recent state transition wins
@@ -120,15 +119,22 @@ Maintains state for all 4 strings:
 
 YIN algorithm implementation optimized for bass:
 
+**Input Signal Processing:**
+
+1. Read active string's OPT101 sample
+2. Convert from 0-1 to -1 to +1 range (remove DC offset)
+3. High-pass filter (20Hz cutoff) - removes residual DC and subsonic rumble
+
 **Frame Processing:**
-1. High-pass filter (20Hz cutoff) - removes DC, subsonic rumble
-2. Hann window - reduces spectral leakage
-3. Difference function - autocorrelation variant
-4. CMNDF - cumulative mean normalized difference
-5. Threshold search - find first dip below threshold
-6. Parabolic interpolation - sub-sample precision
+
+1. Hann window - reduces spectral leakage
+2. Difference function - autocorrelation variant
+3. CMNDF - cumulative mean normalized difference
+4. Threshold search - find first dip below threshold
+5. Parabolic interpolation - sub-sample precision
 
 **Bass Optimizations:**
+
 - Frequency range: 30-300 Hz
 - minLag = sampleRate / 300 = 147 samples
 - maxLag = sampleRate / 30 = 1470 samples
@@ -151,7 +157,7 @@ Standard 4-string bass tuning (E-A-D-G):
 
 Pre-computed frequency table for all frets (0-24) on all strings:
 
-```
+```text
 f(string, fret) = openFrequency[string] * 2^(fret/12)
 ```
 
@@ -206,34 +212,33 @@ Direct register access for IMXRT1062 ADC:
 - Single-ended mode
 - 12-bit resolution
 - Hardware averaging (configurable 1-32)
-- ~10μs per conversion
+- ~10us per conversion
 
 **Pin Mapping:**
+
 ```cpp
-uint8_t pinToChannel(uint8_t pin) {
-    // Teensy 4.0 analog pin to ADC channel
-    14 → 7, 15 → 8, 16 → 12, 17 → 11, 18 → 6
-}
+// OPT101 sensors (string detection + pitch detection)
+Opt101Pins[4] = {22, 21, 20, 19};  // A8, A7, A6, A5 for E, A, D, G
 ```
 
 ### MidiOutput
 
-USB MIDI using Teensy's built-in USB stack:
+Hardware MIDI DIN output via Serial2:
 
-**Packet Format (USB-MIDI):**
-```
-[Cable/CIN][Status][Data1][Data2]
-    │          │       │      └── Data byte 2
-    │          │       └── Data byte 1
-    │          └── MIDI status byte
-    └── Cable number (4 bits) + Code Index Number (4 bits)
+**Standard MIDI 1.0 Format:**
+
+```text
+[Status][Data1][Data2]
+    │       │      └── Data byte 2 (0-127)
+    │       └── Data byte 1 (0-127)
+    └── Status byte (0x80-0xFF)
 ```
 
-**CIN Values:**
-- 0x08: Note Off
-- 0x09: Note On
-- 0x0B: Control Change
-- 0x0E: Pitch Bend
+**Status Bytes:**
+
+- 0x80-0x8F: Note Off (channel 1-16)
+- 0x90-0x9F: Note On (channel 1-16)
+- 0xB0-0xBF: Control Change (channel 1-16)
 
 ## App Module
 
@@ -252,14 +257,15 @@ while (true) {
 ```
 
 At 600MHz CPU, 44.1kHz sample rate:
+
 - cyclesPerSample = 600,000,000 / 44,100 = 13,605 cycles
-- ~22.7μs between samples
+- ~22.7us between samples
 
 ### Note Management
 
 State machine for MIDI note output:
 
-```
+```text
                       ┌─────────────────────────┐
                       │                         │
         resolve()     ▼     resolve()          │
@@ -288,11 +294,11 @@ State machine for MIDI note output:
 
 | Component | Estimated Cycles |
 |-----------|------------------|
-| ADC reads (5 channels) | ~1000 |
+| ADC reads (4 channels) | ~800 |
 | Envelope followers (4x) | ~200 |
 | High-pass filter | ~50 |
 | Buffer management | ~100 |
-| **Total per sample** | **~1350** |
+| **Total per sample** | **~1150** |
 
 | Component | Per-frame (~23ms) |
 |-----------|-------------------|
@@ -303,7 +309,8 @@ State machine for MIDI note output:
 | **Total per frame** | **~4M** |
 
 With 600MHz CPU and 1000 samples per frame:
-- Per-sample budget: 13,605 cycles × 1000 = 13.6M cycles
+
+- Per-sample budget: 13,605 cycles x 1000 = 13.6M cycles
 - Available for pitch detection: ~9M cycles
 - Actual usage: ~4M cycles (comfortable margin)
 
@@ -311,11 +318,11 @@ With 600MHz CPU and 1000 samples per frame:
 
 | Component | Size |
 |-----------|------|
-| Input buffer | 4096 × 4 = 16KB |
-| Difference buffer | 2048 × 4 = 8KB |
-| CMNDF buffer | 2048 × 4 = 8KB |
-| Window coefficients | 4096 × 4 = 16KB |
-| Note tables | 4 × 25 × 4 = 400B |
+| Input buffer | 4096 x 4 = 16KB |
+| Difference buffer | 2048 x 4 = 8KB |
+| CMNDF buffer | 2048 x 4 = 8KB |
+| Window coefficients | 4096 x 4 = 16KB |
+| Note tables | 4 x 25 x 4 = 400B |
 | Stack | ~2KB |
 | **Total** | **~50KB** |
 
